@@ -20,6 +20,7 @@ Q=eye(3);
 R=eye(2);
 %y=Cx
 C=[1 0 0 0; 0 1 0 0; 0 0 0 1];
+C_star=[1 0 0 0 ; 0 1 0 0; 0 0 0 0];
 Y=C*X;
 
 %yd : desired waypoint
@@ -36,25 +37,42 @@ lamda=zeros(4,N+1); % 4 is state num
 %weight matrix
 P0=0.5*eye(3);
 Q=eye(3);
-R=eye(N);
+R=eye(2);
 
 E_=200e-3;%cost function critical point
+%car information
 hold on
-front_car=front_cardef(width);
-adj_behind_car=adj_behind_car_cardef(width);
-adj_front_car=adj_front_car_cardef(width);
+[front_car, front_car_img] = front_cardef(width);
+[adj_behind_car, adj_behind_car_img] = adj_behind_car_cardef(width);
+[adj_front_car, adj_front_car_img]=adj_front_car_cardef(width);
 
 qv(1,:)=abs(U(2,:))-umax(2);
 qdel(1,:)=abs(U(1,:))-umax(1);
-Sj(1)=Rc-norm(Y(1:2,1)-[front_car.x; front_car.y]);
-Sj(2)=Rc-norm(Y(1:2,1)-[adj_behind_car.x; adj_behind_car.y]);
-Sj(3)=Rc-norm(Y(1:2,1)-[adj_front_car.x; adj_front_car.y]);
-Sl(1)=Ro+Ru-norm(Y(1:2,1)-[10; 0]);
+Sj(1,1)=Rc-norm(Y(1:2,1)-[front_car.x; front_car.y]);
+Sj(2,1)=Rc-norm(Y(1:2,1)-[adj_behind_car.x; adj_behind_car.y]);
+Sj(3,1)=Rc-norm(Y(1:2,1)-[adj_front_car.x; adj_front_car.y]);
+Sl(1)=Ro+Ru-norm(Y(1:2,1)-[10; 0]); %To change the static obstacle position, i should change the second line of Slx function in Get_Lamda.m
 
-% while dJ>E_
+%initial objective function
+J=inf;
+ while dJ>E_
+    for i=1:N%x(1) ->now x(N+1) ->after N step
+        [X,beta,delta,qv,qdel,Sj,Sl,Y,Y_]=Get_Next_States(C,X,U,L,delt,beta,delta,i,umax,Rc,Ro,Ru,front_car,adj_behind_car,adj_front_car,Y,Y_,Yd,qv,qdel,Sj,Sl);
+    end
+    for i=N+1:-1:1 %lamda0(now) ~lamdaN
+        lamda = Get_Lamda(L,X,beta,delta,lamda,N,Y_,P0,Q,C,i,move_obs_num,sta_obs_num,Sj,Sl,front_car,adj_behind_car,adj_front_car,C_star);
+    end
     for i=1:N
-        [X,beta,delta,qv,qdel,Sj,Sl,Y,Y_]=Get_Next_States(C,X,U,L,delt,beta,delta,i,umax,Rc,Ro,Ru,front_car,adj_behind_car,adj_front_car,Y,Y_,Yd,qv,qdel,Sj,Sl)
+        partial_H_u=get_partial_H_u(U,R,lamda,i,qv,qdel);
     end
-    for i=N+1:1
-        lamda=Get_Lamda(L,X,beta,delta,lamda,N,Y_,P0,Q,C,i,move_obs_num,sta_obs_num,Sj,Sl)
+    J_pre=J;
+    J=compute_J(P0,Q,R,lamda,X,qv,qdel,Sj,Sl,Y_,U,delta,beta,move_obs_num,sta_obs_num,N,L);
+    if J-J_pre<=0
+        U=update_U()
+    else
+        delt=9/10*delt;
     end
+    
+ end
+    
+    
